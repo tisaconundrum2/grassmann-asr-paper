@@ -1,0 +1,199 @@
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{natbib}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage[margin=1in]{geometry}
+
+% ── Macros ────────────────────────────────────────────────────────────
+\newcommand{\Gr}{\mathrm{Gr}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\plucker}{Pl\"{u}cker}
+\newcommand{\TODO}[1]{{\color{red}\textbf{[TODO: #1]}}}
+
+% ── Title ─────────────────────────────────────────────────────────────
+\title{%
+  Grassmann Manifold Speech Recognition:\\
+  Attention-Free ASR with \plucker{} Coordinates
+}
+
+\author{
+  Nicholas Finch\thanks{Equal contribution.} \\
+  \texttt{nicholas@tisaconundrum.com} \\
+  \and
+  Dhruv Vakharwala\footnotemark[1] \\
+  \texttt{dhruv@vakharwala.com} \\
+}
+
+\date{\today}
+
+% ══════════════════════════════════════════════════════════════════════
+\begin{document}
+\maketitle
+
+% ── Abstract ──────────────────────────────────────────────────────────
+\begin{abstract}
+We present the first application of Grassmann manifold sequence mixing
+to automatic speech recognition (ASR).  Building on the Causal Grassmann
+Layer of~\citet{dong2025attention}, we replace all self-attention in a
+Conformer encoder with \plucker{}-coordinate mixing on the Grassmannian
+$\Gr(2,r)$ and train end-to-end with connectionist temporal
+classification (CTC).  The resulting architecture is \emph{entirely
+attention-free}: sequence-level interaction is performed by embedding
+pairs of reduced hidden states as two-dimensional subspaces, encoding
+their relative geometry via \plucker{} coordinates, and fusing the
+result through a learned sigmoid gate.  Local phonetic structure is
+captured by depthwise separable convolutions in a Macaron-style
+Conformer sandwich.
+
+On LibriSpeech \texttt{train-clean-100}, an 11\,M-parameter model
+achieves 5.6\% character error rate (CER) with greedy CTC decoding
+after 50~epochs of training on a single T4~GPU (\(\sim\)\$4 compute).
+At inference the model transcribes 18 seconds of audio in 195\,ms on a
+MacBook Air CPU---92$\times$ real-time---without quantisation or
+hardware-specific optimisation.  A controlled comparison against a
+size-matched attention-based Conformer on the same data shows the
+Grassmann encoder trailing by approximately 2 CER points at epoch~16 of
+70, with the gap closing at each checkpoint.
+
+We further report ablations isolating the contribution of the Grassmann
+geometry from the multiplicative mixing mechanism, and provide a
+mean-first reformulation of the \plucker{} mixer that yields a
+3.5$\times$ wall-clock speedup with mathematically identical output.
+All code, trained ONNX models, and training logs are publicly available.
+\end{abstract}
+
+% ── 1  Introduction ───────────────────────────────────────────────────
+\section{Introduction}
+\label{sec:intro}
+
+\TODO{Motivate attention-free architectures for ASR.  Cite Conformer,
+CTC, Mamba, and the original Grassmann paper.  State contributions.}
+
+% ── 2  Related Work ───────────────────────────────────────────────────
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Attention-Free Sequence Modelling}
+\TODO{Linear attention, state-space models (S4, Mamba), RWKV, RetNet.}
+
+\subsection{Conformer and CTC-Based ASR}
+\TODO{Gulati et al. 2020, ESPnet recipes, WeNet.}
+
+\subsection{Grassmann Manifolds in Deep Learning}
+\TODO{Dong 2025, GrNet, earlier Grassmann optimisation work.}
+
+% ── 3  Background ─────────────────────────────────────────────────────
+\section{Background}
+\label{sec:background}
+
+\subsection{Grassmannian \texorpdfstring{$\Gr(k,n)$}{Gr(k,n)}}
+\TODO{Define Gr(2,r), explain Plücker embedding and its properties.}
+
+\subsection{Conformer Architecture}
+\TODO{Macaron FFN, ConvModule, self-attention slot.}
+
+\subsection{CTC Loss}
+\TODO{Connectionist temporal classification basics.}
+
+% ── 4  Method ─────────────────────────────────────────────────────────
+\section{Method}
+\label{sec:method}
+
+\subsection{Causal Grassmann Mixer}
+\TODO{Linear reduction, multi-scale pairing, Plücker encoding, gated
+fusion.  Describe causal vs two-sided mode.}
+
+\subsection{Mean-First (Anchored) Reformulation}
+\TODO{Prove equivalence.  Show 3.5x speedup.}
+
+\subsection{Grassmann Conformer Block}
+\TODO{Macaron sandwich with Grassmann mixer replacing self-attention.
+Conv2d subsampling frontend.}
+
+\subsection{Full Model}
+\TODO{Conv2d frontend $\to$ positional encoding $\to$ N Grassmann
+Conformer blocks $\to$ CTC head.  Parameter counts.}
+
+% ── 5  Experimental Setup ─────────────────────────────────────────────
+\section{Experimental Setup}
+\label{sec:experiments}
+
+\subsection{Data}
+\TODO{LibriSpeech-100, LibriSpeech-960, normalisation.}
+
+\subsection{Model Configurations}
+\TODO{Smol (11M), Medium (50M), scaling ladder.}
+
+\subsection{Baselines}
+\TODO{Size-matched attention Conformer, no-mixer ablation, symmetric
+product control.}
+
+\subsection{Training Details}
+\TODO{Optimiser, LR schedule, augmentation, hardware, cost.}
+
+\subsection{Decoding}
+\TODO{Greedy CTC, beam search + character LM.}
+
+% ── 6  Results ────────────────────────────────────────────────────────
+\section{Results}
+\label{sec:results}
+
+\subsection{LibriSpeech-100 (Smol)}
+\TODO{CER/WER curves, sample transcriptions, inference speed.}
+
+\subsection{LibriSpeech-960 (Medium)}
+\TODO{Scaling results when available.}
+
+\subsection{Ablations}
+\TODO{Geometry vs multiplicative mixing, two-sided vs causal,
+window offset selection.}
+
+\subsection{Inference Throughput}
+\TODO{CPU and GPU latency, RTF, comparison to Whisper-tiny.}
+
+% ── 7  Discussion ─────────────────────────────────────────────────────
+\section{Discussion}
+\label{sec:discussion}
+
+\TODO{What the geometry buys (or doesn't).  Edge deployment story.
+Limitations: no LM fusion yet, char-level CTC, small data.}
+
+% ── 8  Conclusion ─────────────────────────────────────────────────────
+\section{Conclusion}
+\label{sec:conclusion}
+
+\TODO{Summarise.  Open questions.  Future work: BPE, SpecAugment,
+larger data, language model integration.}
+
+% ── Acknowledgements ──────────────────────────────────────────────────
+\section*{Acknowledgements}
+\TODO{HF Spaces credits, university GPU access, open-source community.}
+
+% ── References ────────────────────────────────────────────────────────
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+% ── Appendix ──────────────────────────────────────────────────────────
+\appendix
+\section{Hyperparameters}
+\label{app:hparams}
+\TODO{Full config tables.}
+
+\section{Additional Transcription Samples}
+\label{app:samples}
+\TODO{Extended sample outputs from each model size.}
+
+\end{document}

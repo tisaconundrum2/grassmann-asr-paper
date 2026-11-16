@@ -1,0 +1,29 @@
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+*.dvi
+*.ps
+
+# PDF (we'll track the compiled PDF explicitly if desired)
+# *.pdf
+
+# Editor
+.DS_Store
+*.swp
+*~
+.vscode/
+
+# Overleaf
+.texpadtmp/
