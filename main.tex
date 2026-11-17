@@ -59,20 +59,27 @@ captured by depthwise separable convolutions in a Macaron-style
 Conformer sandwich.
 
 On LibriSpeech \texttt{train-clean-100}, an 11\,M-parameter model
-achieves 5.6\% character error rate (CER) with greedy CTC decoding
-after 50~epochs of training on a single T4~GPU (\(\sim\)\$4 compute).
+achieves a validation loss of 0.062 with greedy CTC decoding after
+29~epochs of training on a single T4~GPU (\(\sim\)\$6 compute),
+producing near character-perfect transcriptions on common utterances.
 At inference the model transcribes 18 seconds of audio in 195\,ms on a
 MacBook Air CPU---92$\times$ real-time---without quantisation or
-hardware-specific optimisation.  A controlled comparison against a
-size-matched attention-based Conformer on the same data shows the
-Grassmann encoder trailing by approximately 2 CER points at epoch~16 of
-70, with the gap closing at each checkpoint.
+hardware-specific optimisation.
 
-We further report ablations isolating the contribution of the Grassmann
-geometry from the multiplicative mixing mechanism, and provide a
-mean-first reformulation of the \plucker{} mixer that yields a
-3.5$\times$ wall-clock speedup with mathematically identical output.
-All code, trained ONNX models, and training logs are publicly available.
+Critically, a controlled ablation replacing \plucker{} coordinates
+(antisymmetric products encoding Grassmann geometry) with plain
+symmetric products (same dimensionality, no manifold structure)
+produces \textbf{equivalent results}: through 29 matched epochs the
+validation loss gap never exceeds 0.014, with neither mixer consistently
+ahead.  This indicates that the operative mechanism is the
+\emph{fixed-distance multiplicative mixing pattern} rather than the
+Grassmann geometry per se.  The symmetric variant additionally trains
+2.1$\times$ faster per epoch.
+
+We provide a mean-first reformulation of the \plucker{} mixer that
+yields a 3.5$\times$ wall-clock speedup with mathematically identical
+output.  All code, trained ONNX models, and training logs are publicly
+available.
 \end{abstract}
 
 % ── 1  Introduction ───────────────────────────────────────────────────
@@ -397,11 +404,12 @@ Smol model uses approximately 0.3\,GB of GPU memory.  Checkpoints are
 uploaded to the HuggingFace Hub after each validation improvement,
 enabling automatic resume on job restarts.
 
-\paragraph{Cost.}  The Smol Grassmann model completes 50~epochs in
-approximately 15~hours of T4 wall-clock time ($\sim$1088\,s/epoch),
-costing roughly \$6 at HF Jobs pricing.  The ablation variant trains
-at approximately 538\,s/epoch (2$\times$ faster), completing in
-$\sim$7.5~hours for $\sim$\$3.
+\paragraph{Cost.}  The Smol Grassmann model runs at $\sim$1\,123\,s/epoch
+(18.7\,min), completing 50~epochs in approximately 15.6~hours of T4
+wall-clock time, costing roughly \$6.25 at HF Jobs pricing (\$0.40/hr).
+The ablation variant trains at $\sim$542\,s/epoch (9.0\,min), completing
+in $\sim$7.5~hours for $\sim$\$3.  Total compute for both models:
+under \$10.
 
 \subsection{Decoding}
 
@@ -418,50 +426,83 @@ reflect the encoder quality alone.
 
 \Cref{tab:smol_results} reports validation loss at selected epochs for
 the Grassmann and symmetric-product variants.  Both models are trained
-from identical initialisations on the same cached data with the same
-hyperparameters; the only difference is the mixer.
+from identical initialisations on the same 28\,539 cached mel
+spectrogram samples with the same hyperparameters; the only difference
+is the mixer.
 
 \begin{table}[h]
 \centering
 \caption{Validation loss on LibriSpeech-100 (Smol, 11\,M params).
 Grassmann = \plucker{} mixer; Symmetric = ablation mixer.  Both use
-greedy CTC decoding.  The Grassmann run reached epoch 29 before
-checkpointing; the symmetric run reached epoch 38 in a prior session
-(epochs 1--10 shown for matched comparison).}
+greedy CTC decoding.  The Grassmann model was resumed from an epoch-29
+checkpoint with LR schedule reset, so epochs 30+ are not directly
+comparable (marked with $\dagger$).  The Symmetric model ran
+uninterrupted for all 50 epochs.}
 \label{tab:smol_results}
-\begin{tabular}{rcc}
+\begin{tabular}{rccccc}
 \toprule
-Epoch & Grassmann (val loss) & Symmetric (val loss) \\
+Epoch & \multicolumn{2}{c}{Grassmann (\plucker{})} &
+        \multicolumn{2}{c}{Symmetric (ablation)} & $\Delta$ \\
+      & train & val & train & val & val \\
 \midrule
-1  & 2.296 & 2.323 \\
-2  & 1.585 & 1.587 \\
-3  & 1.162 & 1.168 \\
-5  & 0.733 & 0.736 \\
-10 & 0.357 & 0.359 \\
-15 & 0.215 & 0.092 \\
-20 & 0.149 & 0.058 \\
-29 & 0.062 & --- \\
+1   & 2.674 & 2.301 & 2.691 & 2.315 & 0.014 \\
+2   & 1.920 & 1.585 & 1.935 & 1.599 & 0.014 \\
+3   & 1.427 & 1.162 & 1.425 & 1.152 & $-$0.010 \\
+5   & 0.887 & 0.733 & 0.882 & 0.736 & 0.003 \\
+10  & 0.453 & 0.357 & 0.455 & 0.364 & 0.007 \\
+15  & 0.290 & 0.215 & 0.294 & 0.214 & $-$0.001 \\
+20  & 0.218 & 0.149 & 0.207 & 0.140 & $-$0.009 \\
+25  & ---   & ---   & 0.150 & 0.099 & --- \\
+29  & ---   & 0.062 & 0.117 & 0.065 & 0.003 \\
+\midrule
+\multicolumn{6}{l}{\emph{Grassmann resumed with LR schedule reset ($\dagger$)}} \\
+35$^\dagger$ & 0.146 & 0.086 & 0.083 & 0.040 & --- \\
+40$^\dagger$ & 0.121 & 0.066 & 0.065 & 0.029 & --- \\
+42$^\dagger$ & 0.111 & 0.056 & 0.060 & 0.026 & --- \\
+47  & ---   & ---   & 0.054 & 0.023 & --- \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Through epoch~10, the two variants are statistically indistinguishable
-(within 0.003 val loss at every checkpoint).  The symmetric variant
-shows a slight advantage at later epochs, though this may be
-confounded by the 2$\times$ faster training speed (more parameter
-updates per wall-clock hour) and different cosine schedule phase
-alignment.
+\paragraph{Matched comparison (epochs 1--29).}
+Through 29~epochs under identical conditions, the two variants are
+indistinguishable.  The validation loss gap ($\Delta$) never exceeds
+0.014 and fluctuates in both directions, with neither mixer
+consistently ahead.  At epoch~29 the Grassmann model reached val
+loss 0.062 and the Symmetric model reached 0.065---a difference of
+0.003 in favour of Grassmann, within noise.
 
-Sample transcriptions from the Grassmann model at epoch~10:
+\paragraph{Unmatched comparison (epochs 30+).}
+The Grassmann model was resumed from its epoch-29 checkpoint, but
+the cosine learning rate schedule reset to epoch~1, causing the LR
+to climb back to $3 \times 10^{-4}$ and the validation loss to spike
+to 0.092 before recovering.  The Symmetric model ran uninterrupted
+with its schedule intact, reaching val loss 0.023 at epoch~47.  These
+later epochs are therefore not a fair comparison of mixer quality,
+but rather of schedule integrity.
+
+\paragraph{Training speed.}
+The Symmetric mixer trains at 542\,s/epoch versus 1\,123\,s/epoch for
+the Grassmann mixer---a 2.1$\times$ speedup.  Both models have
+identical parameter counts (11\,004\,893).  The speed difference likely
+stems from the symmetric norm computation avoiding the cancellation
+term in the Lagrange identity used by the \plucker{} norm.
+
+\paragraph{Sample transcriptions.}
+At epoch~40, the Grassmann model produces:
 \begin{quote}
 \small
-\textbf{GT:} ``and he looked the doctor in his pads to the very thick
-as part of the forest a place where no man had ever been before'' \\
-\textbf{PRED:} ``and he loed the doctor in his patsd to the very thick
-as parto the forest a place were no mon had ever ben before''
+\textbf{GT:} ``so there they stayed the whole night through they often
+heard the king's men searching and talking in the jungle round about
+but they were quite safe for no one knew of that hiding place but
+che che not even the other monkeys'' \\
+\textbf{PRED:} ``so there they stayed the whole night through they
+often heard the king's men searching and talking in the jungle round
+about but they were quite safe for no one knew of that hiding placed
+but che ch not even the other monkeys''
 \end{quote}
-Outputs are phonetically plausible with minor character-level errors,
-typical of CTC without language model rescoring.
+Near character-perfect output with greedy CTC decoding, no language
+model.
 
 \subsection{LibriSpeech-960 (Medium)}
 
@@ -564,10 +605,11 @@ Our current results are limited in several ways:
   \item \textbf{No SpecAugment}: we do not apply time-frequency masking
     during training, which is standard in Conformer recipes and would
     improve robustness.
-  \item \textbf{Incomplete ablation run}: the symmetric-product model
-    was trained through epoch~38 but its checkpoint was lost due to an
-    infrastructure issue before the run completed.  The comparison is
-    therefore based on matched epochs 1--10 and partial later data.
+  \item \textbf{Schedule confound}: the Grassmann model's cosine LR
+    schedule reset upon checkpoint resume at epoch~29, making epochs
+    30--50 not directly comparable between the two variants.  The
+    matched comparison is therefore limited to epochs 1--29, where both
+    models ran under identical conditions.
 \end{itemize}
 
 % ── 8  Conclusion ─────────────────────────────────────────────────────
