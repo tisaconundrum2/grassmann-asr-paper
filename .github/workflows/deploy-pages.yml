@@ -1,0 +1,59 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile LaTeX to HTML
+        uses: xu-cheng/latex-action@v3
+        with:
+          # make4ht ships with TeX Live; produce a single HTML file with MathJax
+          root_file: main.tex
+          compiler: make4ht
+          args: >-
+            -u
+            -c mathjax.cfg
+            main.tex
+            "mathjax,fn-in"
+
+      - name: Prepare site directory
+        run: |
+          mkdir -p _site
+          # make4ht outputs main.html in the working directory
+          cp main.html _site/index.html
+          # Copy any generated CSS
+          cp *.css _site/ 2>/dev/null || true
+          # Copy figures if any exist
+          cp -r figures/ _site/figures/ 2>/dev/null || true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
