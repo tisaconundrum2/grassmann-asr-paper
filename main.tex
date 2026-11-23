@@ -616,8 +616,35 @@ Per-utterance WER ranges widely: the best five of the 200 utterances
 score 11--25\% WER, with errors concentrated on phonetic near-misses of
 less frequent words (e.g.\ ``outside'' $\to$ ``oudside''), while the
 worst are dominated by short utterances, where a single error produces
-a large WER.  \TODO{add best and worst 1750h transcriptions verbatim
-from the eval log}
+a large WER.
+
+Selected transcriptions from the best and worst of the 200 evaluated
+utterances:
+\begin{quote}
+\small
+\textbf{Best (WER 11\%):} \\
+\textbf{GT:} ``that will be a queer thing to be sure'' \\
+\textbf{PRED:} ``we will be a queer thing to be sure''
+
+\medskip
+\textbf{Best (WER 22\%):} \\
+\textbf{GT:} ``she found the door but it was locked outside'' \\
+\textbf{PRED:} ``she found the door but it was los oudside''
+
+\medskip
+\textbf{Worst (WER 100\%):} \\
+\textbf{GT:} ``mother dear father do you hear me'' \\
+\textbf{PRED:} ``mter doou farther o hearm''
+
+\medskip
+\textbf{Worst (WER 150\%):} \\
+\textbf{GT:} ``goliath makes another discovery'' \\
+\textbf{PRED:} ``the way of works onnothe distol''
+\end{quote}
+The best outputs are phonetically close with minor substitutions on
+common words.  The worst outputs are short utterances where the model
+produces largely unintelligible text; short clips leave less acoustic
+context for the character-level CTC decoder.
 
 The 1\,750\,h result cannot be compared with the 100\,h Smol results
 in~\Cref{tab:smol_results}, for which we report only validation loss.
