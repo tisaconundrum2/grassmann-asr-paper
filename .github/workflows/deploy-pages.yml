@@ -21,25 +21,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Compile LaTeX to HTML
-        uses: xu-cheng/latex-action@v3
-        with:
-          # make4ht ships with TeX Live; produce a single HTML file with MathJax
-          root_file: main.tex
-          compiler: make4ht
-          args: >-
-            -u
-            -c mathjax.cfg
-            main.tex
-            "mathjax,fn-in"
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            ghcr.io/xu-cheng/texlive-full:latest \
+            sh -c 'make4ht -u -c mathjax.cfg main.tex "mathjax,fn-in"'
 
       - name: Prepare site directory
         run: |
           mkdir -p _site
-          # make4ht outputs main.html in the working directory
           cp main.html _site/index.html
-          # Copy any generated CSS
           cp *.css _site/ 2>/dev/null || true
-          # Copy figures if any exist
           cp -r figures/ _site/figures/ 2>/dev/null || true
 
       - name: Upload Pages artifact
