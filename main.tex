@@ -59,11 +59,20 @@ captured by depthwise separable convolutions in a Macaron-style
 Conformer sandwich.
 
 On LibriSpeech \texttt{train-clean-100}, an 11\,M-parameter model
-achieves a validation loss of 0.062 with greedy CTC decoding after
-29~epochs of training on a single T4~GPU (\(\sim\)\$6 compute),
-producing near character-perfect transcriptions on common utterances.
-At inference the model transcribes 18 seconds of audio in 195\,ms on a
-MacBook Air CPU---92$\times$ real-time---without quantisation or
+achieves a validation CTC loss of 0.062 after 29~epochs of training on
+a single T4~GPU (\(\sim\)\$6 compute).  Scaling the same 11\,M model to
+a nominal 1\,750\,h multi-corpus recipe (LibriSpeech, VoxPopuli,
+People's Speech; 385\,K utterances) for 20~epochs yields a held-out
+word error rate of 60.7\% (CER 31.6\%) on a 200-utterance subset of
+\texttt{test-clean} with greedy character-level CTC, no augmentation
+and no language model---a baseline well short of the state of the art.
+An independent ESPnet replication at 26\,M parameters with BPE,
+SpecAugment and speed perturbation provides a stronger reference: there
+the attention Conformer reaches 9.72\%/22.90\% WER on
+\texttt{test-clean}/\texttt{test-other}, and the Grassmann variant
+trails it by 2.1 points of validation CER after 16 of 70 epochs.
+At inference the 11\,M model transcribes 18 seconds of audio in 195\,ms
+on a MacBook Air CPU---92$\times$ real-time---without quantisation or
 hardware-specific optimisation.
 
 Critically, a controlled ablation replacing \plucker{} coordinates
@@ -71,7 +80,8 @@ Critically, a controlled ablation replacing \plucker{} coordinates
 symmetric products (same dimensionality, no manifold structure)
 produces \textbf{equivalent results}: through 29 matched epochs the
 validation loss gap never exceeds 0.014, with neither mixer consistently
-ahead.  This indicates that the operative mechanism is the
+ahead.  An independent language-modelling replication finds the same
+tie.  This indicates that the operative mechanism is the
 \emph{fixed-distance multiplicative mixing pattern} rather than the
 Grassmann geometry per se.  The symmetric variant additionally trains
 2.1$\times$ faster per epoch.
@@ -118,9 +128,13 @@ Our contributions are:
     (antisymmetric products encoding Grassmann geometry) against plain
     symmetric products (same dimensionality, same offsets, no manifold
     structure), isolating the contribution of the geometry from the
-    multiplicative mixing mechanism.
+    multiplicativeheld-out WER baseline at 1\,750\,h}: the 11\,M
+    symmetric-product model trained on 385\,K utterances, evaluated on
+    LibriSpeech \texttt{test-clean}, alongside an independent ESPnet
+    attention reference at 26\,M parameters.
   \item A \textbf{complete open-source training pipeline} with cached
-    mel spectrogram sharding, incremental checkpoint persistence, and
+    mel spectrogram sharding, shard streaming with background prefetch,
+    mixed-precision training, incremental checkpoint persistence, and
     browser-based ONNX inference at 92$\times$ real-time on consumer
     hardware.
 \end{enumerate}
@@ -128,10 +142,14 @@ Our contributions are:
 On LibriSpeech \texttt{train-clean-100} (100\,h, 28\,K samples), our
 11\,M-parameter Grassmann Conformer reaches a validation loss of 0.062
 after 29~epochs on a single T4~GPU.  Critically, the symmetric-product
-ablation tracks nearly identically through epoch~10 and achieves
-comparable final performance, suggesting that the operative mechanism
-is the \emph{fixed-distance multiplicative mixing pattern} rather than
-the Grassmann geometry per se.  We discuss implications for
+ablation tracks nearly identically through all 29 matched epochs,
+suggesting that the operative mechanism is the \emph{fixed-distance
+multiplicative mixing pattern} rather than the Grassmann geometry per
+se.  At 1\,750\,h, the symmetric-product model reaches 60.7\% WER on a
+\texttt{test-clean} subset with greedy character CTC---far from
+competitive, and a clear marker of how much the recipe (rather than the
+mixer) still has to give.  We discuss implications for architecture
+ geometry per se.  We discuss implications for
 architecture design in~\Cref{sec:discussion}.
 
 % ── 2  Related Work ───────────────────────────────────────────────────
@@ -351,6 +369,18 @@ sharded \texttt{.pt} files, uploaded incrementally to a HuggingFace
 Dataset repository.  Training jobs download only the shards needed for
 their configured sample count.
 
+\paragraph{1\,750\,h recipe.}  For the scaled run we combine
+LibriSpeech~\citep{panayotov2015librispeech},
+VoxPopuli~\citep{wang2021voxpopuli} and People's
+Speech~\citep{galvez2021peoples} into a nominal 1\,750\,h recipe.  Mel
+features are pre-computed with the same front-end and written to 77
+\texttt{.tar} shards of 5\,000 utterances each (385\,K utterances).
+Roughly 22\% of raw utterances are dropped by the duration filter
+($\sim$30\% of VoxPopuli, $\sim$26\% of LibriSpeech, none of People's
+Speech), so the effective number of hours is below the nominal figure.
+Evaluation uses the official LibriSpeech \texttt{test-clean} split,
+which is not part of the training recipe.
+
 \subsection{Model Configurations}
 
 \begin{table}[h]
@@ -361,15 +391,16 @@ their configured sample count.
 \toprule
 Name & Layers & $d$ & $r$ & $d_{\mathrm{ff}}$ & Params & Data \\
 \midrule
-Smol & 6 & 256 & 32 & 1024 & 11.0\,M & 100\,h \\
+Smol-100 & 6 & 256 & 32 & 1024 & 11.0\,M & 100\,h \\
+Smol-1750 & 6 & 256 & 32 & 1024 & 11.0\,M & 1\,750\,h \\
 Medium & 12 & 512 & 64 & 2048 & $\sim$50\,M & 960\,h \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-This paper reports results for the Smol configuration.  The Medium
-configuration is planned for future work with the full 960\,h
-LibriSpeech dataset.
+This paper reports results for the Smol configuration on two data
+scales.  The Smol-1750 run uses the symmetric-product mixer only.  The
+Medium configuration is planned for future work.
 
 \subsection{Baselines}
 
@@ -385,9 +416,16 @@ architecture, parameter count, data, and training recipe:
     $= +1$ in two-sided mode and symmetric norm weighting.  This
     removes the Grassmann geometric interpretation while preserving
     the fixed-offset multiplicative structure.
-  \item \textbf{Attention (reference)}: Dhruv Vakharwala's independent
-    ESPnet-based Conformer with relative-position multi-head
-    self-attention at matched size (15 blocks, $d=256$), trained on the
+  \item \textbf{Attention -CTC (\texttt{egs2/librispeech\_100/asr1})
+    with relative-position multi-head self-attention (15 blocks,
+    $d=256$, 27.0\,M parameters), trained on \texttt{train-clean-100}
+    with BPE-5000 targets, SpecAugment~\citep{park2019specaugment} and
+    3-way speed perturbation for 70 epochs on an A100.  The same
+    pipeline is run with the attention slot replaced by a Grassmann
+    mixer (26.0\,M parameters).  This reference differs from our runs in
+    size, tokenisation and augmentation, so it is not a matched
+    comparison with the Smol models; it is a matched comparison of
+    attention against Grassmann \emph{within} ESPnetocks, $d=256$), trained on the
     same data with the same CTC objective.
 \end{itemize}
 
@@ -401,7 +439,35 @@ the Smol configuration.
 
 Training runs on NVIDIA T4 GPUs (16\,GB) via HuggingFace Jobs.  The
 Smol model uses approximately 0.3\,GB of GPU memory.  Checkpoints are
-uploaded to the HuggingFace Hub after each validation improvement,
+uploaded to
+
+\paragraph{Mixed precision.}  Re-running the Smol-100 ablation with
+automatic mixed precision (AMP) reduces epoch time from 542\,s to
+$\sim$305\,s (1.8$\times$) with no loss in quality (best validation
+loss 0.0209 versus 0.022 in fp32).  All 1\,750\,h training uses AMP.
+
+\paragraph{1\,750\,h training.}  The Smol-1750 symmetric-product model
+is trained for 20~epochs with the same optimiser and a 20-epoch cosine
+schedule.  Shards are streamed rather than unpacked: the next
+\texttt{.tar} shard is downloaded in a background thread while the GPU
+trains on the current one, keeping one shard resident in RAM.  Training
+is compute-bound at $\sim$1.5\,s/batch on a T4, with shard switches
+adding 10--14\% overhead.  The run was interrupted and resumed several
+times; resumption restores optimiser, scheduler and AMP scaler state
+where available, and otherwise fast-forwards the learning-rate schedule
+to the resumed epoch.  Batch size was 128 for the first epochs and 64
+thereafter, after 128 exhausted T4 memory on the longest (15\,s)
+utterances.  The final resumed job (epochs 8--20) took 38.3\,h of T4
+wall-clock time.
+
+Epochs 1--7 were trained on an earlier version of the mel cache that we
+later found to contain roughly twice the expected number of samples,
+most likely because the recipe was cached twice.  Its internal
+validation and test shards therefore probably overlap with training
+data (we have not verified this by hashing).  We do not report
+internal validation loss for this run; the
+only accuracy figure we report is WER on the official LibriSpeech
+\texttt{test-clean} split. the HuggingFace Hub after each validation improvement,
 enabling automatic resume on job restarts.
 
 \paragraph{Cost.}  The Smol Grassmann model runs at $\sim$1\,123\,s/epoch
@@ -504,13 +570,78 @@ but che ch not even the other monkeys''
 Near character-perfect output with greedy CTC decoding, no language
 model.
 
-\subsection{LibriSpeech-960 (Medium)}
+\subsection{1\,750\,h Multi-Corpus (Smol-1750)}
+\label{sec:results_1750}
 
-The Medium configuration (50\,M parameters, 12 layers, $d=512$) on the
-full 960\,h LibriSpeech dataset is planned as future work.  The mel
-spectrogram cache for the 1750\,h multi-dataset recipe (LibriSpeech +
-VoxPopuli + People's Speech) is currently being built, with 41 shards
-($\sim$280\,K samples) uploaded at the time of writing.
+\Cref{tab:wer} reports held-out WER and CER for the Smol-1750
+symmetric-product model after 20~epochs, alongside the independent
+ESPnet reference.
+
+\begin{table}[h]
+\centering
+\caption{Word and character error rates (\%) on LibriSpeech.  All
+results use greedy CTC decoding with no language model.  Smol-1750 is
+scored on the first 200 utterances of \texttt{test-clean} (of 2\,620);
+the ESPnet rows use the full test sets and the average of the 10 best
+checkpoints.  The rows differ in parameters, data, tokenisation and
+augmentation and are not a matched comparison.}
+\label{tab:wer}
+\begin{tabular}{lrlcccc}
+\toprule
+Model & Params & Train data & \multicolumn{2}{c}{test-clean} &
+  \multicolumn{2}{c}{test-other} \\
+ & & & WER & CER & WER & CER \\
+\midrule
+Smol-1750, symmetric (ours) & 11.0\,M & 1\,750\,h, chars
+  & 60.68 & 31.59 & --- & --- \\
+\midrule
+ESPnet Conformer, attention & 27.0\,M & 100\,h, BPE, SA, SP
+  & 9.72 & 4.24 & 22.90 & 12.26 \\
+ESPnet Conformer, Grassmann & 26.0\,M & 100\,h, BPE, SA, SP
+  & \multicolumn{4}{c}{in progress (see text)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Our 1\,750\,h baseline.}
+A WER of 60.7\% is far from competitive and we report it as a baseline,
+not as evidence for or against the mixer.  The model was trained with
+the weakest recipe of any row in~\Cref{tab:wer}: character-level
+targets, no SpecAugment, no speed perturbation, 6 layers and 11\,M
+parameters.  The CER of 31.6\% is roughly half the WER, so most errors
+are partial misspellings rather than wholly wrong words---the pattern
+expected from character CTC without a lexicon or language model.
+Per-utterance WER ranges widely: the best five of the 200 utterances
+score 11--25\% WER, with errors concentrated on phonetic near-misses of
+less frequent words (e.g.\ ``outside'' $\to$ ``oudside''), while the
+worst are dominated by short utterances, where a single error produces
+a large WER.  \TODO{add best and worst 1750h transcriptions verbatim
+from the eval log}
+
+The 1\,750\,h result cannot be compared with the 100\,h Smol results
+in~\Cref{tab:smol_results}, for which we report only validation loss.
+\TODO{score the Smol-100 Grassmann and Symmetric checkpoints on the
+same 200 \texttt{test-clean} utterances, and the Smol-1750 model on the
+full \texttt{test-clean} and \texttt{test-other}}
+
+\paragraph{Independent ESPnet reference.}
+In the ESPnet pipeline, the attention Conformer reproduces the
+published recipe (9.72/22.90 versus 9.8/23.3 on
+\texttt{test-clean}/\texttt{test-other}).  The Grassmann variant had
+completed 16 of 70 epochs at the time of writing, so no WER is
+available yet.  Its validation CER (dev-clean + dev-other) trails
+attention by 12.3 points at epoch~3, 7.4 at epoch~6, 3.6 at epoch~9,
+2.3 at epoch~12 and 2.1 at epoch~16, with the learning rate still
+warming up (peak near epoch~26).  The Grassmann variant trains at
+0.71$\times$ the throughput of attention (10.3 versus 7.3\,min per
+epoch on an A100).  Whether the remaining gap closes, holds or widens
+by epoch~70 is open.  \TODO{update with final ESPnet Grassmann WER on
+test-clean/test-other}
+
+\paragraph{Mixed clean and noisy training.}
+A continuation of the Smol-1750 model from epoch~20 on a 50/50 mix of
+the 1\,750\,h shards and \texttt{train-other-500} is in progress.
+\TODO{report test-clean and test-other WER once complete}
 
 \subsection{Ablations}
 \label{sec:ablations}
@@ -525,11 +656,15 @@ difference is the sign: the symmetric variant has no Grassmann manifold
 interpretation.
 
 The result is unambiguous: \textbf{the two mixers perform
-equivalently}.  Through 10 matched epochs, the gap never exceeds 0.003
-in validation loss.  This is consistent with the independent finding
-of Vakharwala, who observed a statistical tie between \plucker{} and
-symmetric products on language modelling tasks using the ESPnet
-framework.
+equivalently}.  Through 29 matched epochs, the gap never exceeds 0.014
+in validation loss and changes sign repeatedly.  This is consistent
+with the independent finding of Vakharwala, who observed a statistical
+tie between \plucker{} and symmetric products in language modelling
+(WikiText-2, 6 layers, $d=256$, 3 seeds): validation perplexity
+330.0\,$\pm$\,0.5 for \plucker{} versus 327.0\,$\pm$\,2.0 for
+symmetric, a ratio of 1.009 (95\% CI 0.994--1.025).  In that same
+setting, both Grassmann variants trail a matched Transformer
+(247.9\,$\pm$\,2.3) by 30--36\%.
 
 This suggests that the operative mechanism in the Grassmann mixer is
 the \emph{fixed-distance multiplicative mixing pattern}---pairing
@@ -538,15 +673,15 @@ their low-rank projections---rather than the specific antisymmetric
 structure that encodes Grassmann geometry.
 
 \paragraph{Training speed.}
-The symmetric variant trains approximately 2$\times$ faster per epoch
-(538\,s vs.\ 1088\,s on T4).  The cause is under investigation; both
+The symmetric variant trains 2.1$\times$ faster per epoch (542\,s
+vs.\ 1\,123\,s on T4).  The cause is under investigation; both
 models have identical parameter counts and the symmetric products
 involve fewer operations in the norm computation (no cancellation terms
 in the Lagrange identity).
 
 \subsection{Inference Throughput}
 
-The 11\,M-parameter ONNX model transcribes a 16-minute audio file in
+The 11\,M-parameter ONNX model transcribes an 18-second audio clip in
 195\,ms on a MacBook Air M2 CPU (92$\times$ real-time) using the ONNX
 Runtime WebAssembly backend.  No quantisation or hardware-specific
 optimisation is applied.  A browser demo is available at
@@ -584,6 +719,17 @@ primitive that could be applied to other sequence modelling tasks
 (machine translation, language modelling, genomics) independently of
 any manifold interpretation.
 
+\paragraph{Attention-free is not yet attention-equivalent.}
+The mixer ablation tells us \emph{which} part of the Grassmann layer
+matters; it does not tell us whether the layer matches attention.  The
+available evidence says it does not yet: in language modelling the
+Grassmann layer trails a matched Transformer by about a third in
+perplexity, and in the ESPnet ASR pipeline it trails attention by
+2.1 points of validation CER mid-training.  The ASR gap is much
+smaller than the language-modelling gap, plausibly because the
+Conformer's convolution module already supplies local context that
+the Transformer language model lacks, but a final number is pending.
+
 \paragraph{Edge deployment.}
 The 11\,M-parameter model is small enough for browser-based inference
 via ONNX + WebAssembly, achieving 92$\times$ real-time on consumer
@@ -594,17 +740,30 @@ resource-constrained environments.
 \paragraph{Limitations.}
 Our current results are limited in several ways:
 \begin{itemize}
-  \item \textbf{Data scale}: 100\,h of clean read speech is small by
-    modern ASR standards.  The model overfits (train loss 0.071 vs.\
-    val loss 0.736 at epoch~45 of the original run), suggesting that
-    more data would improve generalisation.
+  \item \textbf{Weak absolute accuracy}: our best held-out result is
+    60.7\% WER on \texttt{test-clean}.  Scaling data from 100\,h to
+    1\,750\,h alone did not produce a competitive model at 11\,M
+    parameters with our recipe.
+  \item \textbf{Partial evaluation}: the 1\,750\,h WER is measured on
+    200 of 2\,620 \texttt{test-clean} utterances, with no
+    \texttt{test-other} result, and the 100\,h models are compared by
+    validation loss only.  The 100\,h \plucker{}/symmetric tie is
+    therefore established in CTC loss, not WER.
+  \item \textbf{Single seed}: every ASR run in this paper is one seed.
+  \item \textbf{Mixer coverage at 1\,750\,h}: only the symmetric mixer
+    was trained at 1\,750\,h; we have no \plucker{} or attention run at
+    that scale with our pipeline.
+  \item \textbf{Cache contamination}: the first seven epochs of the
+    1\,750\,h run used a mel cache with duplicated samples, which
+    invalidates internal validation for that run.  Held-out
+    \texttt{test-clean} is unaffected.
   \item \textbf{Character-level CTC}: we use a 29-token character
     vocabulary with no subword modelling (BPE) and no external language
     model.  Adding beam search with an $n$-gram LM or neural LM would
     likely reduce WER substantially.
-  \item \textbf{No SpecAugment}: we do not apply time-frequency masking
-    during training, which is standard in Conformer recipes and would
-    improve robustness.
+  \item \textbf{No SpecAugment or speed perturbation}: neither is
+    applied in any of our runs, although both are standard in Conformer
+    recipes and both are used in the ESPnet reference.
   \item \textbf{Schedule confound}: the Grassmann model's cosine LR
     schedule reset upon checkpoint resume at epoch~29, making epochs
     30--50 not directly comparable between the two variants.  The
@@ -631,10 +790,17 @@ shifted embeddings is a viable attention-free primitive.''  The
 resulting model is simpler to explain, easier to implement, and
 deployable in browser-based inference at 92$\times$ real-time.
 
-Future work includes scaling to 50\,M parameters on the full 960\,h
-LibriSpeech corpus, adding BPE tokenisation, SpecAugment, and beam
-search with language model fusion to establish competitive WER on
-standard benchmarks.  We also plan to investigate why the symmetric
+Scaling the 11\,M symmetric model to 1\,750\,h gives a held-out
+baseline of 60.7\% WER on \texttt{test-clean}, which shows how far a
+minimal recipe is from competitive.  An independent ESPnet replication
+with a standard recipe puts the Grassmann mixer within a few points of
+attention CER mid-training; its final WER will be the clearest test of
+whether attention-free mixing of this kind is competitive for ASR.
+
+Future work includes adding BPE tokenisation, SpecAugment, speed
+perturbation, and beam search with language model fusion to our
+pipeline; scaling to 50\,M parameters; and training the \plucker{}
+and symmetric mixers side by side at 1\,750\,h.  We also plan to investigate why the symmetric
 variant trains 2$\times$ faster per epoch despite identical parameter
 counts, and whether the multi-scale offset pattern can be learned rather
 than hand-specified.
@@ -646,8 +812,9 @@ the HuggingFace team for providing accessible GPU infrastructure with
 per-second billing.  Dhruv Vakharwala independently replicated the
 Grassmann mixer in the ESPnet framework and contributed the symmetric
 product ablation design; his findings on language modelling motivated
-our ASR ablation.  All code, trained ONNX models, and cached training
-data are publicly available.
+our ASR ablation.  He also ran the ESPnet attention and Grassmann
+Conformer-CTC experiments reported in~\Cref{tab:wer}.  All code,
+trained ONNX models, and cached training data are publicly available.
 
 % ── References ────────────────────────────────────────────────────────
 \bibliographystyle{plainnat}
