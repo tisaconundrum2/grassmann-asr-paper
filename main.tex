@@ -417,7 +417,8 @@ architecture, parameter count, data, and training recipe:
     $= +1$ in two-sided mode and symmetric norm weighting.  This
     removes the Grassmann geometric interpretation while preserving
     the fixed-offset multiplicative structure.
-  \item \textbf{Attention -CTC (\texttt{egs2/librispeech\_100/asr1})
+  \item \textbf{Attention (reference)}: Dhruv Vakharwala's independent
+    ESPnet-based Conformer-CTC (\texttt{egs2/librispeech\_100/asr1})
     with relative-position multi-head self-attention (15 blocks,
     $d=256$, 27.0\,M parameters), trained on \texttt{train-clean-100}
     with BPE-5000 targets, SpecAugment~\citep{park2019specaugment} and
@@ -426,8 +427,7 @@ architecture, parameter count, data, and training recipe:
     mixer (26.0\,M parameters).  This reference differs from our runs in
     size, tokenisation and augmentation, so it is not a matched
     comparison with the Smol models; it is a matched comparison of
-    attention against Grassmann \emph{within} ESPnetocks, $d=256$), trained on the
-    same data with the same CTC objective.
+    attention against Grassmann \emph{within} ESPnet.
 \end{itemize}
 
 \subsection{Training Details}
@@ -440,7 +440,8 @@ the Smol configuration.
 
 Training runs on NVIDIA T4 GPUs (16\,GB) via HuggingFace Jobs.  The
 Smol model uses approximately 0.3\,GB of GPU memory.  Checkpoints are
-uploaded to
+uploaded to the HuggingFace Hub after each validation improvement,
+enabling automatic resume on job restarts.
 
 \paragraph{Mixed precision.}  Re-running the Smol-100 ablation with
 automatic mixed precision (AMP) reduces epoch time from 542\,s to
@@ -468,8 +469,7 @@ validation and test shards therefore probably overlap with training
 data (we have not verified this by hashing).  We do not report
 internal validation loss for this run; the
 only accuracy figure we report is WER on the official LibriSpeech
-\texttt{test-clean} split. the HuggingFace Hub after each validation improvement,
-enabling automatic resume on job restarts.
+\texttt{test-clean} split.
 
 \paragraph{Cost.}  The Smol Grassmann model runs at $\sim$1\,123\,s/epoch
 (18.7\,min), completing 50~epochs in approximately 15.6~hours of T4
